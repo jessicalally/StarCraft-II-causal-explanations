@@ -1,8 +1,11 @@
 import os
 
 import tensorflow as tf
-from tensorflow.contrib import layers
-from tensorflow.contrib.distributions import Categorical
+import tensorflow.compat.v1.layers as layers
+# from tensorflow.contrib import layers
+import tensorflow_probability as tfp
+# from tensorflow_probability.distributions import Categorical
+# from tensorflow.contrib.distributions import Categorical
 
 from pysc2.lib.actions import TYPES as ACTION_TYPES
 
@@ -18,7 +21,7 @@ class A2CAgent():
   def __init__(self,
                starsess,
                network_cls=FullyConv,
-               network_data_format='NCHW',
+               network_data_format='channels_first',
                value_loss_weight=0.5,
                entropy_weight=1e-3,
                learning_rate=7e-4,
@@ -40,11 +43,16 @@ class A2CAgent():
     with self.tf_star_graph.as_default():
       with tf.compat.v1.variable_scope(scope):
         self._build(static_shape_channels, resolution)
-        variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=scope)
-        self.saver = tf.train.Saver(variables, max_to_keep=self.max_to_keep)
-        self.init_op = tf.variables_initializer(variables)
-        train_summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope=scope)
-        self.train_summary_op = tf.summary.merge(train_summaries)
+        variables = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, scope=scope)
+        self.saver = tf.compat.v1.train.Saver(variables, max_to_keep=self.max_to_keep)
+        self.init_op = tf.compat.v1.variables_initializer(variables)
+        train_summaries = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.SUMMARIES, scope=scope)
+        print(train_summaries)
+        self.train_summary_op = tf.compat.v1.summary.merge(inputs=train_summaries)
+        # if not train_summaries == []:
+        #   self.train_summary_op = tf.compat.v1.summary.merge(inputs=train_summaries)
+        # else:
+        #   self.train_summary_op = []
 
   def _build(self, static_shape_channels, resolution):
     """Create tensorflow graph for A2C agent.
@@ -56,16 +64,16 @@ class A2CAgent():
     """
     ch = static_shape_channels
     res = resolution
-    screen = tf.placeholder(tf.float32, [None, res, res, ch['screen']],
+    screen = tf.compat.v1.placeholder(tf.float32, [None, res, res, ch['screen']],
                             'input_screen')
-    minimap = tf.placeholder(tf.float32, [None, res, res, ch['minimap']],
+    minimap = tf.compat.v1.placeholder(tf.float32, [None, res, res, ch['minimap']],
                              'input_minimap')
-    flat = tf.placeholder(tf.float32, [None, ch['flat']],
+    flat = tf.compat.v1.placeholder(tf.float32, [None, ch['flat']],
                           'input_flat')
-    available_actions = tf.placeholder(tf.float32, [None, ch['available_actions']],
+    available_actions = tf.compat.v1.placeholder(tf.float32, [None, ch['available_actions']],
                                        'input_available_actions')
-    advs = tf.placeholder(tf.float32, [None], 'advs')
-    returns = tf.placeholder(tf.float32, [None], 'returns')
+    advs = tf.compat.v1.placeholder(tf.float32, [None], 'advs')
+    returns = tf.compat.v1.placeholder(tf.float32, [None], 'returns')
     self.screen = screen
     self.minimap = minimap
     self.flat = flat
@@ -78,9 +86,9 @@ class A2CAgent():
     self.policy = policy
     self.value = value
 
-    fn_id = tf.placeholder(tf.int32, [None], 'fn_id')
+    fn_id = tf.compat.v1.placeholder(tf.int32, [None], 'fn_id')
     arg_ids = {
-        k: tf.placeholder(tf.int32, [None], 'arg_{}_id'.format(k.id))
+        k: tf.compat.v1.placeholder(tf.int32, [None], 'arg_{}_id'.format(k.id))
         for k in policy[1].keys()}
     actions = (fn_id, arg_ids)
     self.actions = actions
@@ -97,31 +105,35 @@ class A2CAgent():
             + value_loss * self.value_loss_weight
             - entropy * self.entropy_weight)
 
-    tf.summary.scalar('entropy', entropy)
-    tf.summary.scalar('loss', loss)
-    tf.summary.scalar('loss/policy', policy_loss)
-    tf.summary.scalar('loss/value', value_loss)
-    tf.summary.scalar('rl/value', tf.reduce_mean(value))
-    tf.summary.scalar('rl/returns', tf.reduce_mean(returns))
-    tf.summary.scalar('rl/advs', tf.reduce_mean(advs))
+    tf.compat.v1.summary.scalar('entropy', entropy)
+    tf.compat.v1.summary.scalar('loss', loss)
+    tf.compat.v1.summary.scalar('loss/policy', policy_loss)
+    tf.compat.v1.summary.scalar('loss/value', value_loss)
+    tf.compat.v1.summary.scalar('rl/value', tf.reduce_mean(value))
+    tf.compat.v1.summary.scalar('rl/returns', tf.reduce_mean(returns))
+    tf.compat.v1.summary.scalar('rl/advs', tf.reduce_mean(advs))
     self.loss = loss
 
     global_step = tf.Variable(0, trainable=False)
-    learning_rate = tf.train.exponential_decay(
+    learning_rate = tf.compat.v1.train.exponential_decay(
         self.learning_rate, global_step,
         10000, 0.94)
 
-    opt = tf.train.RMSPropOptimizer(learning_rate=learning_rate,
+    opt = tf.compat.v1.train.RMSPropOptimizer(learning_rate=learning_rate,
                                     decay=0.99,
                                     epsilon=1e-5)
 
-    self.train_op = layers.optimize_loss(
-        loss=loss,
-        global_step=tf.train.get_global_step(),
-        optimizer=opt,
-        clip_gradients=self.max_gradient_norm,
-        learning_rate=None,
-        name="train_op")
+    grad_and_vars = opt.compute_gradients(loss=loss)
+    grad_and_vars = [(grad, var) for grad, var in grad_and_vars if grad is not None]
+    self.train_op = opt.apply_gradients(grad_and_vars, global_step=tf.compat.v1.train.get_global_step(), name="train_op")
+
+    # self.train_op = layers.optimize_loss(
+        # loss=loss,
+        # global_step=tf.train.get_global_step(),
+    #     optimizer=opt,
+    #     clip_gradients=self.max_gradient_norm,
+    #     learning_rate=None,
+    #     name="train_op")
 
     self.samples = sample_actions(available_actions, policy)
 
@@ -230,7 +242,7 @@ def compute_policy_entropy(available_actions, policy, actions):
   for arg_type in arg_ids.keys():
     arg_id = arg_ids[arg_type]
     arg_pi = arg_pis[arg_type]
-    batch_mask = tf.to_float(tf.not_equal(arg_id, -1))
+    batch_mask = tf.compat.v1.to_float(tf.not_equal(arg_id, -1))
     arg_entropy = safe_div(
         tf.reduce_sum(compute_entropy(arg_pi) * batch_mask),
         tf.reduce_sum(batch_mask))
@@ -246,7 +258,7 @@ def sample_actions(available_actions, policy):
   """Sample function ids and arguments from a predicted policy."""
 
   def sample(probs):
-    dist = Categorical(probs=probs)
+    dist = tf.compat.v1.distributions.Categorical(probs=probs)
     return dist.sample()
 
   fn_pi, arg_pis = policy
@@ -296,7 +308,7 @@ def compute_policy_log_probs(available_actions, policy, actions):
     arg_id = arg_ids[arg_type]
     arg_pi = arg_pis[arg_type]
     arg_log_prob = compute_log_probs(arg_pi, arg_id)
-    arg_log_prob *= tf.to_float(tf.not_equal(arg_id, -1))
+    arg_log_prob *= tf.compat.v1.to_float(tf.not_equal(arg_id, -1))
     log_prob += arg_log_prob
     tf.summary.scalar('log_prob/arg/%s' % arg_type.name,
                       tf.reduce_mean(arg_log_prob))

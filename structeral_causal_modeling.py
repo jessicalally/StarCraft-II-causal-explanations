@@ -1,4 +1,4 @@
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import os
 import numpy as np
 import pandas as pd
@@ -112,7 +112,7 @@ get dictonary from expereince replay by making dictonary. first find the changed
 for each changed feature s value: dict[tuple(action, s)] = array.append(S_i)
 """
 def process_explanations(state_set, action_set, config, state_idx, agent_step, next_state_set=None):
-    
+    print("here - process explanations")
     if (next_state_set==None):
         next_state_set = state_set[1:]
         action_set = action_set[:-1]
@@ -148,12 +148,10 @@ def process_explanations(state_set, action_set, config, state_idx, agent_step, n
             for counter_action in poss_counter_actions:
                 why_not_explanations[(agent_step, action, counter_action)] = {'state': state_set[state_idx], 
                                                         'why_not_exps': generate_counterfactual_explanations(state_set[state_idx], action, counter_action, state_idx)}
-
+        print(why_explanations)
+        print(why_not_explanations)
         pd.DataFrame.from_dict(data=why_explanations, orient='index').to_csv('why_explanations.csv', mode='a', header=False)
         pd.DataFrame.from_dict(data=why_not_explanations, orient='index').to_csv('why_not_explanations.csv', mode='a', header=False)
-
-    
-    
 
 def predict_from_scm():
     predict_y = {}

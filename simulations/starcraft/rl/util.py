@@ -16,7 +16,7 @@ def safe_div(numerator, denominator, name="value"):
   """
   return tf.where(
       tf.greater(denominator, 0),
-      tf.div(numerator, tf.where(
+      tf.compat.v1.div(numerator, tf.where(
           tf.equal(denominator, 0),
           tf.ones_like(denominator), denominator)),
       tf.zeros_like(numerator),
@@ -28,4 +28,4 @@ def safe_log(x):
   return tf.where(
       tf.equal(x, 0),
       tf.zeros_like(x),
-      tf.log(tf.maximum(1e-12, x)))
+      tf.compat.v1.log(tf.maximum(1e-12, x)))

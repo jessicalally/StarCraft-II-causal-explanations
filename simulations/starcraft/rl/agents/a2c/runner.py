@@ -46,7 +46,7 @@ class A2CRunner():
 
 
   def get_mean_score(self):
-    return self.cumulative_score / self.episode_counter
+    return self.cumulative_score / (max(self.episode_counter, 1))
 
   def _summarize_episode(self, timestep):
     score = timestep.observation["score_cumulative"][0]
@@ -63,7 +63,7 @@ class A2CRunner():
       losep = ((self.lose_prec) / (self.episode_counter + 1))*100
 
 
-      summary = tf.Summary()
+      summary = tf.compat.v1.Summary()
       summary.value.add(tag='sc2/episode_score', simple_value=score)
       summary.value.add(tag='sc2/win', simple_value=winp)
       summary.value.add(tag='sc2/draw', simple_value=drawp)

@@ -65,7 +65,7 @@ def main():
     """Starcraft II Init and Config"""
     if simu_agent == 'starcraft':
         config.train = not config.eval
-        os.system('python -m tensorflow.tensorboard --logdir=' + config.logdir)
+        os.system('!tensorboard --logdir=' + config.logdir)
         #os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
         ckpt_path = os.path.join(config.save_dir, config.experiment_id)
         summary_type = 'train' if config.train else 'eval'
@@ -100,9 +100,10 @@ def main():
 
         envs = SubprocVecEnv(env_fns)
         starcraft_graph = tf.Graph()
-        starcraft_sess = tf.Session(graph=starcraft_graph, config=tf.ConfigProto(log_device_placement=True))
-        summary_writer = tf.summary.FileWriter(summary_path)
-        network_data_format = 'NHWC' if config.nhwc else 'NCHW'
+        starcraft_sess = tf.compat.v1.Session(graph=starcraft_graph, config=tf.compat.v1.ConfigProto(log_device_placement=True))
+        tf.compat.v1.disable_eager_execution()
+        summary_writer = tf.compat.v1.summary.FileWriter(summary_path)
+        network_data_format = 'channels_last' if config.nhwc else 'channels_first'
 
         starcraft_agent = A2CAgent(
                 starsess=starcraft_sess,
@@ -137,12 +138,12 @@ def main():
 
     """Start agent training"""
 
-    sess_config = tf.ConfigProto(log_device_placement=False)
+    sess_config = tf.compat.v1.ConfigProto(log_device_placement=False)
     sess_config.gpu_options.allow_growth = True
     
     
-    with tf.Session(config=sess_config) as csess:
-        csess.run(tf.global_variables_initializer())
+    with tf.compat.v1.Session(config=sess_config) as csess:
+        csess.run(tf.compat.v1.global_variables_initializer())
 
         """Starcraft II agent training"""
         if simu_agent == 'starcraft':
@@ -159,11 +160,13 @@ def main():
 
                     result = runner.run_batch(train_summary=write_summary)
                     game_step += 1
+                    print("here")
                     if write_summary:
-
+                        print("here2")
                         agent_step, loss, summary, batch_replay = result
 
                         if train_causal:
+                            print("here3")
                             batch_replay = list(batch_replay.values())
                             obs_set = batch_replay[2].tolist()
                             action_set = batch_replay[4].tolist() 
@@ -199,6 +202,13 @@ def main():
             summary_writer.close()
 
             print('mean score: %f' % runner.get_mean_score())
+
+def read_summary():        
+    for e in tf.compat.v1.train.summary_iterator("\out\summary\\1\\train\events.out.tfevents.1669300852.LAPTOP-E4L3R50Q"):
+        print(e)
+        for v in e.summary.value:
+            # if v.tag == 'loss' or v.tag == 'accuracy':
+            print(v.simple_value)
 
 
 if __name__ == '__main__':

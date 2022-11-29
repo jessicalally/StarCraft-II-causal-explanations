@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib import layers
+import tensorflow.compat.v1.layers as layers
+# from tensorflow.contrib import layers
 
 from pysc2.lib import actions
 from pysc2.lib import features
@@ -14,8 +15,8 @@ class FullyConv():
   Both, NHWC and NCHW data formats are supported for the network
   computations. Inputs and outputs are always in NHWC.
   """
-
-  def __init__(self, data_format='NCHW'):
+  def __init__(self, data_format="channels_first"):
+  # def __init__(self, data_format='NCHW'):
     self.data_format = data_format
 
   def embed_obs(self, x, spec, embed_fn):
@@ -28,7 +29,7 @@ class FullyConv():
         
         dims = np.round(np.log2(scl)).astype(np.int32).item()
         dims = max(dims, 1)
-        indices = tf.one_hot(tf.to_int32(tf.squeeze(f, -1)), scl)
+        indices = tf.one_hot(tf.compat.v1.to_int32(tf.squeeze(f, -1)), scl)
         out = embed_fn(indices, dims)
       elif s.type == features.FeatureType.SCALAR:
         out = self.log_transform(f, scl)
@@ -38,72 +39,72 @@ class FullyConv():
     return tf.concat(out_list, -1)
 
   def log_transform(self, x, scale):
-    return tf.log(x + 1.)
+    return tf.compat.v1.log(x + 1.)
 
   def embed_spatial(self, x, dims):
     x = self.from_nhwc(x)
     out = layers.conv2d(
         x, dims,
         kernel_size=1,
-        stride=1,
+        strides=1,
         padding='SAME',
-        activation_fn=tf.nn.relu,
+        activation=tf.nn.relu,
         data_format=self.data_format)
     return self.to_nhwc(out)
 
   def embed_flat(self, x, dims):
-    return layers.fully_connected(
+    return layers.dense(
         x, dims,
-        activation_fn=tf.nn.relu)
+        activation=tf.nn.relu)
 
   def input_conv(self, x, name):
     conv1 = layers.conv2d(
         x, 16,
         kernel_size=5,
-        stride=1,
+        strides=1,
         padding='SAME',
-        activation_fn=tf.nn.relu,
+        activation=tf.nn.relu,
         data_format=self.data_format,
-        scope="%s/conv1" % name)
+        name ="%s/conv1" % name)
     conv2 = layers.conv2d(
         conv1, 32,
         kernel_size=3,
-        stride=1,
+        strides=1,
         padding='SAME',
-        activation_fn=tf.nn.relu,
+        activation=tf.nn.relu,
         data_format=self.data_format,
-        scope="%s/conv2" % name)
+        name ="%s/conv2" % name)
     return conv2
 
   def non_spatial_output(self, x, channels):
-    logits = layers.fully_connected(x, channels, activation_fn=None)
+    logits = layers.dense(x, channels, activation=None)
     return tf.nn.softmax(logits)
 
   def spatial_output(self, x):
-    logits = layers.conv2d(x, 1, kernel_size=1, stride=1, activation_fn=None,
+    logits = layers.conv2d(x, 1, kernel_size=1, strides=1, activation=None,
                            data_format=self.data_format)
     logits = layers.flatten(self.to_nhwc(logits))
     return tf.nn.softmax(logits)
 
   def concat2d(self, lst):
-    if self.data_format == 'NCHW':
+    if self.data_format == "channels_first":
       return tf.concat(lst, axis=1)
     return tf.concat(lst, axis=3)
 
   def broadcast_along_channels(self, flat, size2d):
-    if self.data_format == 'NCHW':
+    if self.data_format == "channels_first":
       return tf.tile(tf.expand_dims(tf.expand_dims(flat, 2), 3),
                      tf.stack([1, 1, size2d[0], size2d[1]]))
     return tf.tile(tf.expand_dims(tf.expand_dims(flat, 1), 2),
                    tf.stack([1, size2d[0], size2d[1], 1]))
 
   def to_nhwc(self, map2d):
-    if self.data_format == 'NCHW':
+    if self.data_format == "channels_first":
       return tf.transpose(map2d, [0, 2, 3, 1])
     return map2d
 
   def from_nhwc(self, map2d):
-    if self.data_format == 'NCHW':
+    if self.data_format == "channels_first":
       return tf.transpose(map2d, [0, 3, 1, 2])
     return map2d
 
@@ -123,9 +124,9 @@ class FullyConv():
     state_out = self.concat2d([screen_out, minimap_out, broadcast_out])
 
     flat_out = layers.flatten(self.to_nhwc(state_out))
-    fc = layers.fully_connected(flat_out, 256, activation_fn=tf.nn.relu)
+    fc = layers.dense(flat_out, 256, activation=tf.nn.relu)
 
-    value = layers.fully_connected(fc, 1, activation_fn=None)
+    value = layers.dense(fc, 1, activation=None)
     value = tf.reshape(value, [-1])
 
     fn_out = self.non_spatial_output(fc, NUM_FUNCTIONS)
