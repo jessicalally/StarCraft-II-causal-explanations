@@ -179,7 +179,6 @@ def main():
                                 starcraft_replay_act.extend(action_set)
                                                     
                             if len(starcraft_replay_obs) >= config.data_size:
-
                                 """generate why and why not explanations for a given state index of the batch data (here 0) and save to file"""
                                 scm.process_explanations(starcraft_replay_obs, starcraft_replay_act, config, 0, game_step)    
                                 starcraft_replay_obs = []

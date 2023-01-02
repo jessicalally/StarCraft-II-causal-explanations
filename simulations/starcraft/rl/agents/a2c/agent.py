@@ -49,10 +49,6 @@ class A2CAgent():
         train_summaries = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.SUMMARIES, scope=scope)
         print(train_summaries)
         self.train_summary_op = tf.compat.v1.summary.merge(inputs=train_summaries)
-        # if not train_summaries == []:
-        #   self.train_summary_op = tf.compat.v1.summary.merge(inputs=train_summaries)
-        # else:
-        #   self.train_summary_op = []
 
   def _build(self, static_shape_channels, resolution):
     """Create tensorflow graph for A2C agent.

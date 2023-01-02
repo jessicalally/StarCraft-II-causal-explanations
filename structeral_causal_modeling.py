@@ -57,14 +57,15 @@ for edge in causal_graph.edges():
     causal_graph.add_edge(edge[0], edge[1], action=action_matrix[edge[0]][edge[1]])
 
 
-def train_structeral_equations():
+def train_structeral_equations(structural_equations=structeral_equations):
 
     for key in structeral_equations:
-        structeral_equations[key]['function'].train(input_fn=get_input_fn(structeral_equations[key],                                       
+        structural_equations[key]['function'].train(input_fn=get_input_fn(structural_equations[key],                                       
                                                                             num_epochs=None,                                      
                                                                             n_batch = 128,                                      
                                                                             shuffle=False),                                      
-                                                                            steps=1000)    
+                                                                            steps=1000)
+    return structural_equations
 
 
 
@@ -140,6 +141,7 @@ def process_explanations(state_set, action_set, config, state_idx, agent_step, n
 
         initialize_structeral_equations(config)
 
+        # Generations why and why not explanations for every possible combination of actions
         why_explanations = {}
         why_not_explanations = {}
         for action in actionset:
@@ -148,8 +150,6 @@ def process_explanations(state_set, action_set, config, state_idx, agent_step, n
             for counter_action in poss_counter_actions:
                 why_not_explanations[(agent_step, action, counter_action)] = {'state': state_set[state_idx], 
                                                         'why_not_exps': generate_counterfactual_explanations(state_set[state_idx], action, counter_action, state_idx)}
-        print(why_explanations)
-        print(why_not_explanations)
         pd.DataFrame.from_dict(data=why_explanations, orient='index').to_csv('why_explanations.csv', mode='a', header=False)
         pd.DataFrame.from_dict(data=why_not_explanations, orient='index').to_csv('why_not_explanations.csv', mode='a', header=False)
 
