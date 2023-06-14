@@ -1,5 +1,6 @@
 import tensorflow.compat.v1 as tf
 import os
+import copy
 import numpy as np
 import pandas as pd
 import networkx as nx
@@ -7,8 +8,6 @@ import matplotlib.pyplot as plt
 import matplotlib
 import logging
 import explanation_templates as explanations
-
-
 
 #starcraft causal graph
 graph_matrix = np.array([
@@ -34,6 +33,7 @@ attack = 13
 
 """
 actionset = (91, 42, 477, 13)
+actions = [91, 42, 477, 13]
 action_matrix = np.array([
     [0, 91, 42, 0, 0, 0, 0, 0, 0], #0
     [0, 0, 0, 477, 0, 0, 0, 0, 0], #1
@@ -51,11 +51,11 @@ structeral_equations = {}
 equation_predictions = {}
 
 causal_graph = nx.from_numpy_matrix(graph_matrix, create_using=nx.MultiDiGraph())
+edges = copy.deepcopy(causal_graph.edges())
 
-for edge in causal_graph.edges():
+for edge in edges:
     causal_graph.remove_edge(edge[0], edge[1])
     causal_graph.add_edge(edge[0], edge[1], action=action_matrix[edge[0]][edge[1]])
-
 
 def train_structeral_equations(structural_equations=structeral_equations):
 
@@ -65,12 +65,12 @@ def train_structeral_equations(structural_equations=structeral_equations):
                                                                             n_batch = 128,                                      
                                                                             shuffle=False),                                      
                                                                             steps=1000)
-    return structural_equations
 
 
+    return structural_equations                         
 
-def initialize_structeral_equations(config):
 
+def initialize_structeral_equations(config, action_influence_dataset):
     uniqueu_functions = {}
     for edge in causal_graph.edges():
         predcs = causal_graph.predecessors(edge[1])        
@@ -82,9 +82,9 @@ def initialize_structeral_equations(config):
                 uniqueu_functions[(edge[1], action_on_edge)] = set()
                 uniqueu_functions[(edge[1], action_on_edge)].add(pred)     
             
-
     for key in uniqueu_functions:
         if key[1] in action_influence_dataset:
+            print("HERE")
             x_data = []
             for x_feature in uniqueu_functions[key]:
                 x_data.append(np.array(action_influence_dataset[key[1]]['state'])[:,x_feature])
@@ -96,6 +96,9 @@ def initialize_structeral_equations(config):
                                         'Y': y_data,
                                         'function': get_regressor(x_feature_cols, key, config.scm_regressor)
                                         }
+
+    print(structeral_equations)
+    return structeral_equations
 
 
 """use different types of regressors"""        	
@@ -113,6 +116,7 @@ get dictonary from expereince replay by making dictonary. first find the changed
 for each changed feature s value: dict[tuple(action, s)] = array.append(S_i)
 """
 def process_explanations(state_set, action_set, config, state_idx, agent_step, next_state_set=None):
+    print(state_set)
     print("here - process explanations")
     if (next_state_set==None):
         next_state_set = state_set[1:]
@@ -120,9 +124,9 @@ def process_explanations(state_set, action_set, config, state_idx, agent_step, n
         state_set = state_set[:-1]
 
     if config.scm_mode == 'train':
-        print('starting scm training-------')          
+        print('starting scm training-------')
+        print(action_set)
         for i in range(len(action_set)):
-
             if action_set[i] in action_influence_dataset:
                 action_influence_dataset[action_set[i]]['state'].append(state_set[i])
                 action_influence_dataset[action_set[i]]['next_state'].append(next_state_set[i])
@@ -131,15 +135,19 @@ def process_explanations(state_set, action_set, config, state_idx, agent_step, n
                 action_influence_dataset[action_set[i]]['state'].append(state_set[i])
                 action_influence_dataset[action_set[i]]['next_state'].append(next_state_set[i])
 
-        initialize_structeral_equations(config)
-        train_structeral_equations()
+        structural_equations = initialize_structeral_equations(config, action_influence_dataset)
+        structural_equations = train_structeral_equations(structural_equations)
+        structeral_equations = structeral_equations
         print('end scm training-------')
+
+        print('testing...')
+        
     else:
         uniqueu_actions = list(actionset)    
         for action in uniqueu_actions:
             action_influence_dataset[action] = {'state' : state_set, 'next_state': next_state_set}
 
-        initialize_structeral_equations(config)
+        initialize_structeral_equations(config, action_influence_dataset)
 
         # Generations why and why not explanations for every possible combination of actions
         why_explanations = {}
@@ -153,15 +161,63 @@ def process_explanations(state_set, action_set, config, state_idx, agent_step, n
         pd.DataFrame.from_dict(data=why_explanations, orient='index').to_csv('why_explanations.csv', mode='a', header=False)
         pd.DataFrame.from_dict(data=why_not_explanations, orient='index').to_csv('why_not_explanations.csv', mode='a', header=False)
 
-def predict_from_scm():
+        print('testing...')
+
+def evaluate_accuracy(structural_equations, state_set, action_set, next_state_set):
+    print("Starting SCM evaluation...")
+    if structeral_equations == {}:
+        return
+
+    num_correct = 0
+    total = 0
+
+    for idx, action in enumerate(action_set):
+        print(idx)
+        if idx > 10: break
+        s = state_set[idx]
+        s_next = next_state_set[idx]
+
+        # print(s)
+        predict_next_states = predict_from_scm(structural_equations, s) # these don't seem to be correct
+        # print(predict_next_states)
+        diff_with_actual_value = {}
+
+        for key in structural_equations:
+            predicted_value = predict_next_states[key]
+            actual_value = s_next[key[0]]
+            diff_with_actual_value[key] = abs(predicted_value - actual_value)
+
+        # print(diff_with_actual_value)
+        predicted_action = min(diff_with_actual_value, key=diff_with_actual_value.get)[1]
+        # we could look at the total diffs for each action
+        # then the predicted action is the one with the least difference
+        total += 1
+
+        if action == predicted_action:
+            num_correct += 1
+
+    accuracy = (num_correct / total) * 100
+    print("accuracy is " + str(accuracy) + "%")
+
+def predict_from_scm(structural_equations, s):
     predict_y = {}
-    for key in structeral_equations:
-        training_pred = structeral_equations[key]['function'].predict(input_fn=get_input_fn(structeral_equations[key],                          
+
+    for key in structural_equations:
+        pred = structural_equations[key]['function'].predict(input_fn=get_predict_fn(s,                          
                 num_epochs=1,                          
                 n_batch = 128,                          
                 shuffle=False))
-        predict_y[key] = np.array([item['predictions'][0] for item in training_pred])
-    equation_predictions = predict_y
+        predict_y[key] = np.array([item['predictions'][0] for item in pred])
+
+    return predict_y
+
+def get_predict_fn(data_set, num_epochs=None, n_batch = 128, shuffle=False):
+    x_data = {str(k): data_set[k] for k in range(len(data_set))}
+    return tf.estimator.inputs.pandas_input_fn(       
+            x=pd.DataFrame(x_data, index=[0]),
+            batch_size=n_batch,          
+            num_epochs=num_epochs,       
+            shuffle=shuffle)
 
 def predict_node_scm (node, action):
     key = (node, action)
@@ -171,19 +227,20 @@ def predict_node_scm (node, action):
                 shuffle=False))
     return  np.array([item['predictions'][0] for item in pred])           
 
-
-
 def generate_why_explanations(actual_state, actual_action, state_num_in_batch):
+    print(f'actual action {actual_action}')
     optimal_state_set = []
     actual_state = {k: actual_state[k] for k in range(len(actual_state))}
     sink_nodes = get_sink_nodes()
     actual_action_edge_list = get_edges_of_actions(actual_action)
+    print(f'actual action edge list {actual_action_edge_list}')
     all_actual_causal_chains_from_action = get_causal_chains(sink_nodes, actual_action_edge_list)
     action_chain_list = get_action_chains(actual_action, all_actual_causal_chains_from_action)
 
     why_exps = set()
     for i in range(len(all_actual_causal_chains_from_action)):
         optimal_state = dict(actual_state)
+        print(f'optimal state {optimal_state}')
         for j in range(len(all_actual_causal_chains_from_action[i])):
             for k in range(len(all_actual_causal_chains_from_action[i][j])):
                 optimal_state[all_actual_causal_chains_from_action[i][j][k]] = predict_node_scm(
@@ -193,6 +250,7 @@ def generate_why_explanations(actual_state, actual_action, state_num_in_batch):
         min_tuple_optimal_state = get_minimally_complete_tuples(all_actual_causal_chains_from_action[i], optimal_state)
         why_exps.add(explanations.sc_generate_why_text_explanations(min_tuple_actual_state, min_tuple_optimal_state, actual_action))
 
+    print(why_exps)
     return why_exps
  
 
@@ -302,7 +360,7 @@ def get_edges_of_actions(action):
     return list(edge for edge in causal_graph.edges(data=True) if edge[2]['action'] == action)
    
 def get_sink_nodes():
-    return list((node for node, out_degree in causal_graph.out_degree_iter() if out_degree == 0 and causal_graph.in_degree(node) > 0 ))
+    return list((node for node, out_degree in causal_graph.out_degree() if out_degree == 0))
 
 def get_input_fn(data_set, num_epochs=None, n_batch = 128, shuffle=False):
         x_data = {str(k): data_set['X'][k] for k in range(len(data_set['X']))}
@@ -312,4 +370,3 @@ def get_input_fn(data_set, num_epochs=None, n_batch = 128, shuffle=False):
                 batch_size=n_batch,          
                 num_epochs=num_epochs,       
                 shuffle=shuffle)
-
