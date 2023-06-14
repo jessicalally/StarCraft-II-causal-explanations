@@ -38,6 +38,8 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
+import structeral_causal_modeling as scm
+
 
 import matplotlib
 matplotlib.use('Agg')
@@ -153,15 +155,15 @@ def main():
                     if i > 0 and i % config.save_iters == 0:
                         _save_if_training(starcraft_agent, summary_writer, config, ckpt_path)
 
-                    result, obs, actions, rewards = runner.run_batch(train_summary=write_summary)
+                    result, obs, actions, rewards, scores, values = runner.run_batch(train_summary=write_summary)
 
-                    df = pd.DataFrame(obs["flat"])
+                    df = pd.DataFrame(obs)
                     with open("starcraft_states.csv", 'a') as f:
                         df.to_csv(f, header=False, index=False)
 
                     f.close()
 
-                    df = pd.DataFrame(actions[0])
+                    df = pd.DataFrame(actions)
                     with open("starcraft_actions.csv", 'a') as f:
                         df.to_csv(f, header=False, index=False)
 
@@ -172,6 +174,18 @@ def main():
                         df.to_csv(f, header=False, index=False)
 
                     f.close()
+
+                    df = pd.DataFrame(scores)
+                    with open("starcraft_scores.csv", 'a') as f:
+                        df.to_csv(f, header=False, index=False)
+
+                    f.close()
+
+                    # df = pd.DataFrame(values)
+                    # with open("starcraft_values.csv", 'a') as f:
+                    #     df.to_csv(f, header=False, index=False)
+
+                    # f.close()
                     
                     game_step += 1
 
@@ -180,6 +194,7 @@ def main():
 
                         if train_causal:
                             batch_replay = list(batch_replay.values())
+                            # print(f"batch replay {batch_replay}")
                             obs_set = batch_replay[2].tolist()
                             action_set = batch_replay[4].tolist() 
                             
@@ -190,18 +205,24 @@ def main():
                                 starcraft_replay_obs.extend(obs_set)
                                 starcraft_replay_act.extend(action_set)
 
-                            df = pd.DataFrame(starcraft_replay_obs)
-                            with open("starcraft_obs.csv", 'a') as f:
-                                df.to_csv(f, header=False, index=False)
+                            if len(starcraft_replay_obs) >= config.data_size:
+                                """generate why and why not explanations for a given state index of the batch data (here 0) and save to file"""
+                                # scm.process_explanations(starcraft_replay_obs, starcraft_replay_act, config, 0, game_step)    
+                                # starcraft_replay_obs = []
+                                # starcraft_replay_act = []         
 
-                            f.close()
+                            # df = pd.DataFrame(starcraft_replay_obs)
+                            # with open("starcraft_obs.csv", 'a') as f:
+                            #     df.to_csv(f, header=False, index=False)
+
+                            # f.close()
                             
-                            df = pd.DataFrame(starcraft_replay_act)
+                            # df = pd.DataFrame(starcraft_replay_act)
 
-                            with open("starcraft_acts.csv", 'a') as f:
-                                df.to_csv(f, header=False, index=False)
+                            # with open("starcraft_acts.csv", 'a') as f:
+                            #     df.to_csv(f, header=False, index=False)
 
-                            f.close()
+                            # f.close()
                                                     
                         summary_writer.add_summary(summary, global_step=agent_step)
                         print('iter %d: loss = %f' % (agent_step, loss))
