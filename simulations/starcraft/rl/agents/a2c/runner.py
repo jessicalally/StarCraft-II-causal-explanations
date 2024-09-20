@@ -91,6 +91,7 @@ class A2CRunner():
     all_obs = []
     all_actions = []
     all_scores = []
+    all_episode_scores = []
 
     last_obs = self.last_obs
 
@@ -99,7 +100,6 @@ class A2CRunner():
       actions = mask_unused_argument_samples(actions)
       size = last_obs['screen'].shape[1:3]
 
-      # TODO: will we need these values for feature importance - are these Q-values?
       values[n, :] = value_estimate
       all_obs.append(last_obs)
       all_actions.append(actions)
@@ -110,6 +110,7 @@ class A2CRunner():
       last_obs = self.preproc.preprocess_obs(obs_raw)
       rewards[n, :] = [t.reward for t in obs_raw]
       dones[n, :] = [t.last() for t in obs_raw]
+      all_episode_scores.append([t.observation["score_cumulative"][0] for t in obs_raw])
 
       all_scores.append([t.reward for t in obs_raw])
 
@@ -134,9 +135,9 @@ class A2CRunner():
     if self.train:
       return self.agent.train(
           obs, actions, returns, advs,
-          summary=train_summary), obs, actions, scores
+          summary=train_summary), obs["flat"], actions[0], rewards.flatten(), all_episode_scores, values.flatten()
 
-    return obs, actions, scores
+    return obs["flat"], actions[0], rewards.flatten(), all_episode_scores, values.flatten()
 
 
 def compute_returns_advantages(rewards, dones, values, next_values, discount):

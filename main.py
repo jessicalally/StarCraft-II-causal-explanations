@@ -181,11 +181,11 @@ def main():
 
                     f.close()
 
-                    # df = pd.DataFrame(values)
-                    # with open("starcraft_values.csv", 'a') as f:
-                    #     df.to_csv(f, header=False, index=False)
+                    df = pd.DataFrame(values)
+                    with open("starcraft_values.csv", 'a') as f:
+                        df.to_csv(f, header=False, index=False)
 
-                    # f.close()
+                    f.close()
                     
                     game_step += 1
 
